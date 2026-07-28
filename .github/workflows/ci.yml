@@ -1,0 +1,56 @@
+name: Smart Mall CI/CD
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run type-check
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: npm ci
+      - run: npm run test:unit
+      - run: npm run test:integration
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm ci
+      - run: npm run build
+      - run: |
+          docker build -t smartmall-api-gateway ./apps/api-gateway
+          docker build -t smartmall-auth-service ./apps/auth-service
+          docker build -t smartmall-user-service ./apps/user-service
+          docker build -t smartmall-store-service ./apps/store-service
+          docker build -t smartmall-product-service ./apps/product-service
+          docker build -t smartmall-order-service ./apps/order-service
+          docker build -t smartmall-payment-service ./apps/payment-service
+          docker build -t smartmall-notification-service ./apps/notification-service
+          docker build -t smartmall-loyalty-service ./apps/loyalty-service
+          docker build -t smartmall-ai-service ./apps/ai-service
+          docker build -t smartmall-parking-service ./apps/parking-service
+          docker build -t smartmall-iot-service ./apps/iot-service
+          docker build -t smartmall-crm-service ./apps/crm-service
+          docker build -t smartmall-erp-service ./apps/erp-service
+          docker build -t smartmall-booking-service ./apps/booking-service
+          docker build -t smartmall-media-service ./apps/media-service
+          docker build -t smartmall-search-service ./apps/search-service
+          docker build -t smartmall-analytics-service ./apps/analytics-service
+          docker build -t smartmall-digital-signage ./apps/digital-signage
+          docker build -t smartmall-wifi-portal ./apps/wifi-portal

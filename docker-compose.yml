@@ -1,0 +1,396 @@
+version: '3.9'
+
+services:
+  # ==================== DATABASES ====================
+  postgres:
+    image: postgres:16-alpine
+    container_name: smartmall-postgres
+    environment:
+      POSTGRES_DB: smartmall
+      POSTGRES_USER: smartmall
+      POSTGRES_PASSWORD: smartmall@2024
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - smartmall-network
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:7
+    container_name: smartmall-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: smartmall
+      MONGO_INITDB_ROOT_PASSWORD: smartmall@2024
+      MONGO_INITDB_DATABASE: smartmall
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - smartmall-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: smartmall-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --requirepass smartmall@2024
+    networks:
+      - smartmall-network
+    restart: unless-stopped
+
+  elasticsearch:
+    image: elasticsearch:8.11.0
+    container_name: smartmall-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - smartmall-network
+    restart: unless-stopped
+
+  # ==================== MESSAGE QUEUE ====================
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: smartmall-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: smartmall
+      RABBITMQ_DEFAULT_PASS: smartmall@2024
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - smartmall-network
+    restart: unless-stopped
+
+  # ==================== MICROSERVICES ====================
+  api-gateway:
+    build:
+      context: .
+      dockerfile: apps/api-gateway/Dockerfile
+    container_name: smartmall-api-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://:smartmall@2024@redis:6379
+      - RABBITMQ_URL=amqp://smartmall:smartmall@2024@rabbitmq:5672
+    depends_on:
+      - redis
+      - rabbitmq
+    networks:
+      - smartmall-network
+    restart: unless-stopped
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: apps/auth-service/Dockerfile
+    container_name: smartmall-auth-service
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://smartmall:smartmall@2024@postgres:5432/smartmall
+      - REDIS_URL=redis://:smartmall@2024@redis:6379
+      - JWT_SECRET=smartmall-jwt-secret-2024-super-secure
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - smartmall-network
+    restart: unless-stopped
+
+  user-service:
+    build:
+      context: .
+      dockerfile: apps/user-service/Dockerfile
+    container_name: smartmall-user-service
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://smartmall:smartmall@2024@postgres:5432/smartmall
+      - REDIS_URL=redis://:smartmall@2024@redis:6379
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - smartmall-network
+    restart: unless-stopped
+
+  store-service:
+    build:
+      context: .
+      dockerfile: apps/store-service/Dockerfile
+    container_name: smartmall-store-service
+    ports:
+      - "3003:3003"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://smartmall:smartmall@2024@postgres:5432/smartmall
+      - MONGODB_URI=mongodb://smartmall:smartmall@2024@mongodb:27017/smartmall
+    depends_on:
+      - postgres
+      - mongodb
+    networks:
+      - smartmall-network
+    restart: unless-stopped
+
+  product-service:
+    build:
+      context: .
+      dockerfile: apps/product-service/Dockerfile
+    container_name: smartmall-product-service
+    ports:
+      - "3004:3004"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://smartmall:smartmall@2024@postgres:5432/smartmall
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+    depends_on:
+      - postgres
+      - elasticsearch
+    networks:
+      - smartmall-network
+    restart: unless-stopped
+
+  order-service:
+    build:
+      context: .
+      dockerfile: apps/order-service/Dockerfile
+    container_name: smartmall-order-service
+    ports:
+      - "3005:3005"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://smartmall:smartmall@2024@postgres:5432/smartmall
+      - RABBITMQ_URL=amqp://smartmall:smartmall@2024@rabbitmq:5672
+    depends_on:
+      - postgres
+      - rabbitmq
+    networks:
+      - smartmall-network
+    restart: unless-stopped
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: apps/payment-service/Dockerfile
+    container_name: smartmall-payment-service
+    ports:
+      - "3006:3006"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://smartmall:smartmall@2024@postgres:5432/smartmall
+      - REDIS_URL=redis://:smartmall@2024@redis:6379
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - smartmall-network
+    restart: unless-stopped
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: apps/notification-service/Dockerfile
+    container_name: smartmall-notification-service
+    ports:
+      - "3007:3007"
+    environment:
+      - NODE_ENV=production
+      - RABBITMQ_URL=amqp://smartmall:smartmall@2024@rabbitmq:5672
+    depends_on:
+      - rabbitmq
+    networks:
+      - smartmall-network
+    restart: unless-stopped
+
+  loyalty-service:
+    build:
+      context: .
+      dockerfile: apps/loyalty-service/Dockerfile
+    container_name: smartmall-loyalty-service
+    ports:
+      - "3008:3008"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://smartmall:smartmall@2024@postgres:5432/smartmall
+      - REDIS_URL=redis://:smartmall@2024@redis:6379
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - smartmall-network
+    restart: unless-stopped
+
+  ai-service:
+    build:
+      context: .
+      dockerfile: apps/ai-service/Dockerfile
+    container_name: smartmall-ai-service
+    ports:
+      - "3010:3010"
+    environment:
+      - NODE_ENV=production
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - MONGODB_URI=mongodb://smartmall:smartmall@2024@mongodb:27017/smartmall
+    depends_on:
+      - mongodb
+    networks:
+      - smartmall-network
+    restart: unless-stopped
+
+  parking-service:
+    build:
+      context: .
+      dockerfile: apps/parking-service/Dockerfile
+    container_name: smartmall-parking-service
+    ports:
+      - "3011:3011"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://smartmall:smartmall@2024@postgres:5432/smartmall
+      - REDIS_URL=redis://:smartmall@2024@redis:6379
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - smartmall-network
+    restart: unless-stopped
+
+  iot-service:
+    build:
+      context: .
+      dockerfile: apps/iot-service/Dockerfile
+    container_name: smartmall-iot-service
+    ports:
+      - "3012:3012"
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://smartmall:smartmall@2024@mongodb:27017/smartmall
+      - RABBITMQ_URL=amqp://smartmall:smartmall@2024@rabbitmq:5672
+    depends_on:
+      - mongodb
+      - rabbitmq
+    networks:
+      - smartmall-network
+    restart: unless-stopped
+
+  # ==================== FRONTEND ====================
+  customer-web:
+    build:
+      context: .
+      dockerfile: apps/customer-web/Dockerfile
+    container_name: smartmall-customer-web
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://localhost:3000
+    depends_on:
+      - api-gateway
+    networks:
+      - smartmall-network
+    restart: unless-stopped
+
+  admin-cms:
+    build:
+      context: .
+      dockerfile: apps/admin-cms/Dockerfile
+    container_name: smartmall-admin-cms
+    ports:
+      - "4001:4001"
+    environment:
+      - NODE_ENV=production
+      - REACT_APP_API_URL=http://localhost:3000
+    depends_on:
+      - api-gateway
+    networks:
+      - smartmall-network
+    restart: unless-stopped
+
+  store-owner-portal:
+    build:
+      context: .
+      dockerfile: apps/store-owner-portal/Dockerfile
+    container_name: smartmall-store-owner-portal
+    ports:
+      - "4002:4002"
+    environment:
+      - NODE_ENV=production
+      - REACT_APP_API_URL=http://localhost:3000
+    depends_on:
+      - api-gateway
+    networks:
+      - smartmall-network
+    restart: unless-stopped
+
+  # ==================== MONITORING ====================
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: smartmall-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infrastructure/prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    networks:
+      - smartmall-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: smartmall-grafana
+    ports:
+      - "9091:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=smartmall@2024
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - smartmall-network
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: smartmall-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infrastructure/nginx:/etc/nginx/conf.d
+    depends_on:
+      - customer-web
+      - admin-cms
+      - api-gateway
+    networks:
+      - smartmall-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  mongodb_data:
+  redis_data:
+  elasticsearch_data:
+  rabbitmq_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  smartmall-network:
+    driver: bridge
+
