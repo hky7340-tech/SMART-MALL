@@ -1,14 +1,14 @@
-import { GetServerSideProps } from 'next';
+import { useEffect } from 'react';
+import { useRouter } from 'next/router';
 
 export default function HomePage() {
+    const router = useRouter();
+
+    useEffect(() => {
+        if (router.isReady) {
+            router.replace('/users');
+        }
+    }, [router]);
+
     return null;
 }
-
-export const getServerSideProps: GetServerSideProps = async () => {
-    return {
-        redirect: {
-            destination: '/users',
-            permanent: false,
-        },
-    };
-};
